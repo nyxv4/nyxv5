@@ -680,8 +680,8 @@ run(function()
 	FOV = ProjectileAimbot:CreateSlider({
 		Name = 'FOV',
 		Min = 1,
-		Max = 1000,
-		Default = 1000
+		Max = 500,
+		Default = 500
 	})
 end)
 	
