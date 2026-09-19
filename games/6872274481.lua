@@ -1223,129 +1223,274 @@ run(function()
 		Name = 'AimAssist',
 		Function = function(callback)
 			if callback then
-				AimAssist:Clean(runService.Heartbeat:Connect(function(dt)
-					if entitylib.isAlive and store.hand.toolType == 'sword' and ((not ClickAim.Enabled) or (tick() - bedwars.SwordController.lastSwing) < 0.4) then
-						local ent = not KillauraTarget.Enabled and entitylib.EntityPosition({
-							Range = Distance.Value,
-							Part = 'RootPart',
-							Wallcheck = Targets.Walls.Enabled,
-							Players = Targets.Players.Enabled,
-							NPCs = Targets.NPCs.Enabled,
-							Sort = sortmethods[Sort.Value]
-						}) or store.KillauraTarget
-	
-						if ent then
-							local delta = (ent.RootPart.Position - entitylib.character.RootPart.Position)
-							local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
-							local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
-							if angle >= (math.rad(AngleSlider.Value) / 2) then return end
-							targetinfo.Targets[ent] = tick() + 1
-							gameCamera.CFrame = gameCamera.CFrame:Lerp(CFrame.lookAt(gameCamera.CFrame.p, ent.RootPart.Position), (AimSpeed.Value + (StrafeIncrease.Enabled and (inputService:IsKeyDown(Enum.KeyCode.A) or inputService:IsKeyDown(Enum.KeyCode.D)) and 10 or 0)) * dt)
+				lockedTarget = nil
+				lastValidTarget = nil
+				lastValidTime = 0
+				shakeTime = 0
+				local aimBindName = 'vapeAimAssist'
+				AimAssist:Clean(function()
+					pcall(function() runService:UnbindFromRenderStep(aimBindName) end)
+				end)
+				runService:BindToRenderStep(aimBindName, Enum.RenderPriority.Camera.Value + 1, (function(dt)
+
+					if not entitylib.isAlive or not entitylib.character or not entitylib.character.RootPart then
+						lockedTarget = nil
+						return
+					end
+
+					local validWeapon = store.hand.toolType == 'sword'
+					if WorkWithProjectiles and WorkWithProjectiles.Enabled then
+						validWeapon = validWeapon or isHoldingBowCrossbow()
+					end
+					if not validWeapon then
+						lockedTarget = nil
+						return
+					end
+
+					if ClickAim and ClickAim.Enabled then
+						local sc = bedwars.SwordController
+						local lastAttack = sc and rawget(sc, 'lastAttack')
+						if not lastAttack or (workspace:GetServerTimeNow() - lastAttack) >= 0.4 then
+							return
 						end
 					end
+
+					local inFirstPerson = isFirstPerson()
+					if ViewMode.Value == 'First Person' and not inFirstPerson then return end
+					if ViewMode.Value == 'Third Person' and inFirstPerson then return end
+
+					if ShopCheck and ShopCheck.Enabled then
+						if isGUIOpen() then
+							lockedTarget = nil
+							return
+						end
+					end
+
+					local ent = nil
+
+					if KillauraTarget and KillauraTarget.Enabled then
+						local ka = store.KillauraTarget
+						if ka and ka.RootPart and ka.Character and ka.Character.Parent then
+							local hum = ka.Character:FindFirstChildOfClass('Humanoid')
+							local dist = ka.RootPart and entitylib.character and entitylib.character.RootPart and (ka.RootPart.Position - entitylib.character.RootPart.Position).Magnitude
+							if hum and hum.Health > 0 and dist and dist <= Distance.Value then
+								ent = ka
+							end
+						end
+					else
+						if PriorityMode and PriorityMode.Enabled and lockedTarget then
+							if isEntValid(lockedTarget) and isInAngle(lockedTarget) then
+								ent = lockedTarget
+							else
+								lockedTarget = nil
+							end
+						end
+
+						if not ent then
+							local found = entitylib.EntityPosition({
+								Range = Distance.Value,
+								Part = 'RootPart',
+								Wallcheck = Targets.Walls.Enabled,
+								Players = Targets.Players.Enabled,
+								NPCs = Targets.NPCs.Enabled,
+								Sort = sortmethods[Sort.Value]
+							})
+
+							if found then
+								lastValidTarget = found
+								lastValidTime = tick()
+								ent = found
+							elseif lastValidTarget and (tick() - lastValidTime) < GRACE_PERIOD then
+								local hum = lastValidTarget.Character and lastValidTarget.Character:FindFirstChildOfClass('Humanoid')
+								if hum and hum.Health > 0 and lastValidTarget.Character.Parent and isInAngle(lastValidTarget) then
+									ent = lastValidTarget
+								else
+									lastValidTarget = nil
+								end
+							end
+
+							if ent and PriorityMode and PriorityMode.Enabled then
+								lockedTarget = ent
+							end
+						end
+					end	
+
+					if not ent then return end
+
+					if not (KillauraTarget and KillauraTarget.Enabled) then
+						if not isEntValid(ent) then
+							if PriorityMode and PriorityMode.Enabled then lockedTarget = nil end
+							lastValidTarget = nil
+							return
+						end
+						if not isInAngle(ent) then
+							if PriorityMode and PriorityMode.Enabled then lockedTarget = nil end
+							return
+						end
+					end
+
+					targetinfo.Targets[ent] = tick() + 1
+
+					local aimPosition
+					if AimPart.Value == 'Head' then
+						local head = ent.Character and ent.Character:FindFirstChild('Head')
+						aimPosition = head and head.Position or ent.RootPart.Position
+					elseif AimPart.Value == 'Torso' then
+						local torso = ent.Character and (ent.Character:FindFirstChild('UpperTorso') or ent.Character:FindFirstChild('Torso'))
+						aimPosition = torso and torso.Position or ent.RootPart.Position
+					elseif AimPart.Value == 'Closest' then
+						local closest = ent.Character and getClosestPartToCursor(ent.Character)
+						aimPosition = closest and closest.Position or ent.RootPart.Position
+					else
+						aimPosition = ent.RootPart.Position
+					end
+
+					if ShakeToggle and ShakeToggle.Enabled and ShakeAmount.Value > 0 then
+						shakeTime = shakeTime + dt
+						local camCF = gameCamera.CFrame
+						local dist = (aimPosition - camCF.Position).Magnitude
+						local intensity = ShakeAmount.Value * 0.0035 * math.max(dist, 1)
+						local driftX = math.noise(shakeTime * 0.8, 0, shakeSeed) * 2
+						local driftY = math.noise(0, shakeTime * 0.7, shakeSeed) * 2
+						local microX = math.noise(shakeTime * 9.5, shakeSeed, 0) * 2
+						local microY = math.noise(shakeSeed, shakeTime * 10.7, 0) * 2
+						local sx = (driftX * 0.7 + microX * 0.3) * intensity
+						local sy = (driftY * 0.55 + microY * 0.25) * intensity
+						aimPosition = aimPosition + camCF.RightVector * sx + camCF.UpVector * sy
+					end
+
+					local targetCFrame = CFrame.lookAt(gameCamera.CFrame.p, aimPosition)
+					local smoothVal = (SmoothnessToggle and SmoothnessToggle.Enabled and Smoothness) and Smoothness.Value or nil
+					local alpha = getAimAlpha(AimSpeed.Value, smoothVal, dt)
+					gameCamera.CFrame = gameCamera.CFrame:Lerp(targetCFrame, alpha)
 				end))
+			else
+				lockedTarget = nil
+				lastValidTarget = nil
+				shakeTime = 0
 			end
 		end,
-		Tooltip = 'Smoothly aims to closest valid target with sword'
+		Tooltip = 'aa with smooth tracking'
 	})
+
 	Targets = AimAssist:CreateTargets({
 		Players = true,
 		Walls = true
 	})
-	local methods = {'Damage', 'Distance'}
-	for i in sortmethods do
-		if not table.find(methods, i) then
-			table.insert(methods, i)
-		end
-	end
+
 	Sort = AimAssist:CreateDropdown({
 		Name = 'Target Mode',
-		List = methods
+		List = getSortList({'Damage', 'Distance'}),
+		Tooltip = 'prioritize targets'
 	})
+
+	AimPart = AimAssist:CreateDropdown({
+		Name = 'Aim Part',
+		List = {'Torso', 'Head', 'Closest'},
+		Default = 'Torso'
+	})
+
+	ViewMode = AimAssist:CreateDropdown({
+		Name = 'View Mode',
+		List = {'First Person', 'Third Person', 'Both'},
+		Default = 'Both',
+		Tooltip = 'either only aim in first person or third person, or both'
+	})
+	getgenv().ViewMode = ViewMode
+
 	AimSpeed = AimAssist:CreateSlider({
 		Name = 'Aim Speed',
 		Min = 1,
 		Max = 20,
-		Default = 6
+		Default = 6,
+		Tooltip = 'how fast aim assist moves toward the target'
 	})
+
 	Distance = AimAssist:CreateSlider({
 		Name = 'Distance',
 		Min = 1,
 		Max = 30,
-		Default = 30,
-		Suffx = function(val)
+		Default = 25,
+		Suffix = function(val)
 			return val == 1 and 'stud' or 'studs'
 		end
 	})
+
 	AngleSlider = AimAssist:CreateSlider({
-		Name = 'Max angle',
+		Name = 'Max Angle',
 		Min = 1,
 		Max = 360,
-		Default = 70
+		Default = 60,
 	})
+
+	SmoothnessToggle = AimAssist:CreateToggle({
+		Name = 'Smoothness',
+		Default = false,
+		Tooltip = 'makes aim assist feels more legit',
+		Function = function(callback)
+			if Smoothness then Smoothness.Object.Visible = callback end
+		end
+	})
+
+	Smoothness = AimAssist:CreateSlider({
+		Name = 'Smoothness Amount',
+		Min = 1,
+		Max = 10,
+		Default = 5,
+		Visible = false
+	})
+
+	PriorityMode = AimAssist:CreateToggle({
+		Name = 'Priority Mode',
+		Default = false,
+		Tooltip = 'stays on one target until target is lost'
+	})
+
 	ClickAim = AimAssist:CreateToggle({
 		Name = 'Click Aim',
-		Default = true
+		Default = true,
+		Tooltip = 'only aims when clicking'
 	})
+
 	KillauraTarget = AimAssist:CreateToggle({
-		Name = 'Use killaura target'
+		Name = 'Use Killaura Target',
 	})
-	StrafeIncrease = AimAssist:CreateToggle({Name = 'Strafe increase'})
-end)
-	
-run(function()
-	local old
-	
-	AutoCharge = vape.Categories.Combat:CreateModule({
-	    Name = 'AutoCharge',
-	    Function = function(callback)
-	        debug.setconstant(bedwars.SwordController.attackEntity, 58, callback and 'damage' or 'multiHitCheckDurationSec')
-	        if callback then
-	            local chargeSwingTime = 0
-	            local canSwing
-	
-	            old = bedwars.SwordController.sendServerRequest
-	            bedwars.SwordController.sendServerRequest = function(self, ...)
-	                if (os.clock() - chargeSwingTime) < AutoChargeTime.Value then return end
-	                self.lastSwingServerTimeDelta = 0.5
-	                chargeSwingTime = os.clock()
-	                canSwing = true
-	
-	                local item = self:getHandItem()
-	                if item and item.tool then
-	                    self:playSwordEffect(bedwars.ItemMeta[item.tool.Name], false)
-	                end
-	
-	                return old(self, ...)
-	            end
-	
-	            oldSwing = bedwars.SwordController.playSwordEffect
-	            bedwars.SwordController.playSwordEffect = function(...)
-	                if not canSwing then return end
-	                canSwing = false
-	                return oldSwing(...)
-	            end
-	        else
-	            if old then
-	                bedwars.SwordController.sendServerRequest = old
-	                old = nil
-	            end
-	
-	            if oldSwing then
-	                bedwars.SwordController.playSwordEffect = oldSwing
-	                oldSwing = nil
-	            end
-	        end
-	    end,
-	    Tooltip = 'Allows you to get charged hits while spam clicking.'
+
+	ShakeToggle = AimAssist:CreateToggle({
+		Name = 'Shake',
+		Default = false,
+		Tooltip = 'shakes your screen for more legitness',
+		Function = function(callback)
+			if ShakeAmount then ShakeAmount.Object.Visible = callback end
+		end
 	})
-	AutoChargeTime = AutoCharge:CreateSlider({
-	    Name = 'Charge Time',
-	    Min = 0,
-	    Max = 0.5,
-	    Default = 0.4,
-	    Decimal = 100
+
+	ShakeAmount = AimAssist:CreateSlider({
+		Name = 'Shake Amount',
+		Min = 1,
+		Max = 10,
+		Default = 3,
+		Visible = false
 	})
+
+	ShopCheck = AimAssist:CreateToggle({
+		Name = 'Shop Check',
+		Default = false,
+	})
+
+	WorkWithProjectiles = AimAssist:CreateToggle({
+		Name = 'Work With Projectiles',
+		Default = false,
+	})
+
+	task.defer(function()
+		if Smoothness and Smoothness.Object then
+			Smoothness.Object.Visible = SmoothnessToggle and SmoothnessToggle.Enabled or false
+		end
+		if ShakeAmount and ShakeAmount.Object then
+			ShakeAmount.Object.Visible = false
+		end
+	end)
 end)
 	
 run(function()
