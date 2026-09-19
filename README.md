@@ -12,10 +12,10 @@
 </h2>
 
 ## Contacts
-[Discord](https://discord.gg/GtmVtMc6) - MY DISCORD
+[Discord] MY DISCORD IS 41862
 <br/>
-[Youtube](https://youtube.com/c/7GrandDadVape) - XYLEX YOUTUBE
-
+[Youtube] NO YT YET
+a
 ## Usage
 1. Download the specific scripting utility of your choice.
 2. Execute the provided loadstring below.
