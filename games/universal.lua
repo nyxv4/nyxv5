@@ -2456,6 +2456,14 @@ run(function()
 		end,
 		Tooltip = 'Attack players around you\nwithout aiming at them.'
 	})
+	Targets = Killaura:CreateTargets({Players = true})
+	CPS = Killaura:CreateTwoSlider({
+		Name = 'Attacks per Second',
+		Min = 1,
+		Max = 20,
+		DefaultMin = 12,
+		DefaultMax = 12
+	})
 	SwingRange = Killaura:CreateSlider({
 		Name = 'Swing range',
 		Min = 1,
@@ -2483,8 +2491,8 @@ run(function()
 	Max = Killaura:CreateSlider({
 		Name = 'Max targets',
 		Min = 1,
-		Max = 5,
-		Default = 5
+		Max = 10,
+		Default = 10
 	})
 	Mouse = Killaura:CreateToggle({Name = 'Require mouse down'})
 	Lunge = Killaura:CreateToggle({Name = 'Sword lunge only'})
