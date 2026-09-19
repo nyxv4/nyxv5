@@ -2347,8 +2347,8 @@ run(function()
 	SwingRange = Killaura:CreateSlider({
 		Name = 'Swing range',
 		Min = 1,
-		Max = 18,
-		Default = 18,
+		Max = 40,
+		Default = 40,
 		Suffix = function(val)
 			return val == 1 and 'stud' or 'studs'
 		end
@@ -2356,8 +2356,8 @@ run(function()
 	AttackRange = Killaura:CreateSlider({
 		Name = 'Attack range',
 		Min = 1,
-		Max = 18,
-		Default = 18,
+		Max = 22,
+		Default = 22,
 		Suffix = function(val)
 			return val == 1 and 'stud' or 'studs'
 		end
@@ -2378,15 +2378,15 @@ run(function()
 	UpdateRate = Killaura:CreateSlider({
 		Name = 'Update rate',
 		Min = 1,
-		Max = 120,
+		Max = 60,
 		Default = 60,
 		Suffix = 'hz'
 	})
 	MaxTargets = Killaura:CreateSlider({
 		Name = 'Max targets',
 		Min = 1,
-		Max = 5,
-		Default = 5
+		Max = 8,
+		Default = 8
 	})
 	Sort = Killaura:CreateDropdown({
 		Name = 'Target Mode',
